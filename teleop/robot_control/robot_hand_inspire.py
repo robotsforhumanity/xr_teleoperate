@@ -27,10 +27,6 @@ class Inspire_Controller:
             self.hand_retargeting = HandRetargeting(HandType.INSPIRE_HAND)
         else:
             self.hand_retargeting = HandRetargeting(HandType.INSPIRE_HAND_Unit_Test)
-
-        if self.simulation_mode:
-            ChannelFactoryInitialize(1)
-        else:
             ChannelFactoryInitialize(0)
 
         # initialize handcmd publisher and handstate subscriber
