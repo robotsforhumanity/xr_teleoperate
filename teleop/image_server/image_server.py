@@ -4,7 +4,7 @@ import time
 import struct
 from collections import deque
 import numpy as np
-import pyrealsense2 as rs
+#import pyrealsense2 as rs
 import logging_mp
 logger_mp = logging_mp.get_logger(__name__, level=logging_mp.DEBUG)
 
@@ -312,9 +312,9 @@ if __name__ == "__main__":
         'head_camera_type': 'opencv',
         'head_camera_image_shape': [480, 1280],  # Head camera resolution
         'head_camera_id_numbers': [0],
-        'wrist_camera_type': 'opencv',
-        'wrist_camera_image_shape': [480, 640],  # Wrist camera resolution
-        'wrist_camera_id_numbers': [2, 4],
+        #'wrist_camera_type': 'opencv',
+        #'wrist_camera_image_shape': [480, 640],  # Wrist camera resolution
+        #'wrist_camera_id_numbers': [2, 4],
     }
 
     server = ImageServer(config, Unit_Test=False)
