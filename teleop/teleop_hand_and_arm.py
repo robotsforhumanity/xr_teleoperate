@@ -85,11 +85,11 @@ if __name__ == '__main__':
         img_config = {
             'fps': 30,
             'head_camera_type': 'opencv',
-            'head_camera_image_shape': [480, 1280],  # Head camera resolution
+            'head_camera_image_shape': [480, 640],  # Head camera resolution
             'head_camera_id_numbers': [0],
-            'wrist_camera_type': 'opencv',
-            'wrist_camera_image_shape': [480, 640],  # Wrist camera resolution
-            'wrist_camera_id_numbers': [2, 4],
+            #'wrist_camera_type': 'opencv',
+            #'wrist_camera_image_shape': [480, 640],  # Wrist camera resolution
+            #'wrist_camera_id_numbers': [2, 4],
         }
 
 
@@ -124,7 +124,7 @@ if __name__ == '__main__':
         img_client = ImageClient(tv_img_shape = tv_img_shape, tv_img_shm_name = tv_img_shm.name, 
                                  wrist_img_shape = wrist_img_shape, wrist_img_shm_name = wrist_img_shm.name)
     else:
-        img_client = ImageClient(tv_img_shape = tv_img_shape, tv_img_shm_name = tv_img_shm.name)
+        img_client = ImageClient(tv_img_shape = tv_img_shape, tv_img_shm_name = tv_img_shm.name, server_address="192.168.1.3")
 
     image_receive_thread = threading.Thread(target = img_client.receive_process, daemon = True)
     image_receive_thread.daemon = True
@@ -402,7 +402,6 @@ if __name__ == '__main__':
                         recorder.add_item(colors=colors, depths=depths, states=states, actions=actions, sim_state=sim_state)
                     else:
                         recorder.add_item(colors=colors, depths=depths, states=states, actions=actions)
-
             current_time = time.time()
             time_elapsed = current_time - start_time
             sleep_time = max(0, (1 / args.frequency) - time_elapsed)
