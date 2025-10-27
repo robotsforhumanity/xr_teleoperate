@@ -27,21 +27,29 @@ from sshkeyboard import listen_keyboard, stop_listening
 # for simulation
 from unitree_sdk2py.core.channel import ChannelPublisher
 from unitree_sdk2py.idl.std_msgs.msg.dds_ import String_
-def publish_reset_category(category: int,publisher): # Scene Reset signal
+def publish_reset_category(category: int, publisher): # Scene Reset signal
     msg = String_(data=str(category))
     publisher.Write(msg)
     logger_mp.info(f"published reset category: {category}")
 
 # state transition
-START          = False  # Enable to start robot following VR user motion  
+START          = False  # Enable to start robot following VR user motion
 STOP           = False  # Enable to begin system exit procedure
-RECORD_TOGGLE  = False  # [Ready] ⇄ [Recording] ⟶ [AutoSave] ⟶ [Ready]         (⇄ manual) (⟶ auto)
+READY          = False  # Ready to (1) enter START state, (2) enter RECORD_RUNNING state
 RECORD_RUNNING = False  # True if [Recording]
-RECORD_READY   = False  # True if [Ready], False if [Recording] or [AutoSave]
-# task info
-TASK_NAME = None
-TASK_DESC = None
-ITEM_ID = None
+RECORD_TOGGLE  = False  # Toggle recording state
+#  -------        ---------                -----------                -----------            ---------
+#   state          [Ready]      ==>        [Recording]     ==>         [AutoSave]     -->     [Ready]
+#  -------        ---------      |         -----------      |         -----------      |     ---------
+#   START           True         |manual      True          |manual      True          |        True
+#   READY           True         |set         False         |set         False         |auto    True
+#   RECORD_RUNNING  False        |to          True          |to          False         |        False
+#                                ∨                          ∨                          ∨
+#   RECORD_TOGGLE   False       True          False        True          False                  False
+#  -------        ---------                -----------                 -----------            ---------
+#  ==> manual: when READY is True, set RECORD_TOGGLE=True to transition.
+#  --> auto  : Auto-transition after saving data.
+
 def on_press(key):
     global STOP, START, RECORD_TOGGLE
     if key == 'r':
@@ -54,27 +62,19 @@ def on_press(key):
     else:
         logger_mp.warning(f"[on_press] {key} was pressed, but no action is defined for this key.")
 
-def on_info(info):
-    """Only handle CMD_TOGGLE_RECORD's task info"""
-    global TASK_NAME, TASK_DESC, ITEM_ID
-    TASK_NAME   = info.get("task_name")
-    TASK_DESC   = info.get("task_desc")
-    ITEM_ID     = info.get("item_id")
-    logger_mp.debug(f"[on_info] Updated globals: {TASK_NAME}, {TASK_DESC}, {ITEM_ID}")
-
 def get_state() -> dict:
     """Return current heartbeat state"""
-    global START, STOP, RECORD_RUNNING, RECORD_READY
+    global START, STOP, RECORD_RUNNING, READY
     return {
         "START": START,
         "STOP": STOP,
+        "READY": READY,
         "RECORD_RUNNING": RECORD_RUNNING,
-        "RECORD_READY": RECORD_READY,
     }
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--frequency', type = float, default = 30.0, help = 'save data\'s frequency')
+    parser.add_argument('--frequency', type = float, default = 30.0, help = 'save and control \'s frequency')
 
     # basic control parameters
     parser.add_argument('--xr-mode', type=str, choices=['hand', 'controller'], default='hand', help='Select XR device tracking source')
@@ -84,12 +84,17 @@ if __name__ == '__main__':
     parser.add_argument('--motion', action = 'store_true', help = 'Enable motion control mode')
     parser.add_argument('--headless', action='store_true', help='Enable headless mode (no display)')
     parser.add_argument('--sim', action = 'store_true', help = 'Enable isaac simulation mode')
-    parser.add_argument('--affinity', action = 'store_true', help = 'Enable high priority and set CPU affinity')
+    parser.add_argument('--affinity', action = 'store_true', help = 'Enable high priority and set CPU affinity mode')
     parser.add_argument('--ipc', action = 'store_true', help = 'Enable IPC server to handle input; otherwise enable sshkeyboard')
-    parser.add_argument('--record', action = 'store_true', help = 'Enable data recording')
+    parser.add_argument('--pass-through', action='store_true', help='Enable passthrough mode (use real-world view in XR device)')
+    parser.add_argument('--img-server-ip', type=str, default='127.0.0.1', help='IP address of image server')
+    # record mode and task info
+    parser.add_argument('--record', action = 'store_true', help = 'Enable data recording mode')
     parser.add_argument('--task-dir', type = str, default = './utils/data/', help = 'path to save data')
-    parser.add_argument('--task-name', type = str, default = 'pick cube', help = 'task name for recording')
-    parser.add_argument('--task-desc', type = str, default = 'e.g. pick the red cube on the table.', help = 'task goal for recording')
+    parser.add_argument('--task-name', type = str, default = 'pick cube', help = 'task file name for recording')
+    parser.add_argument('--task-goal', type = str, default = 'pick up cube.', help = 'task goal for recording at json file')
+    parser.add_argument('--task-desc', type = str, default = 'task description', help = 'task description for recording at json file')
+    parser.add_argument('--task-steps', type = str, default = 'step1: do this; step2: do that;', help = 'task steps for recording at json file')
 
     args = parser.parse_args()
     logger_mp.info(f"args: {args}")
@@ -97,23 +102,26 @@ if __name__ == '__main__':
     try:
         # ipc communication mode. client usage: see utils/ipc.py
         if args.ipc:
-            ipc_server = IPC_Server(on_press=on_press, on_info=on_info, get_state=get_state)
+            ipc_server = IPC_Server(on_press=on_press,get_state=get_state)
             ipc_server.start()
         # sshkeyboard communication mode
         else:
-            listen_keyboard_thread = threading.Thread(target=listen_keyboard, kwargs={"on_press": on_press, "until": None, "sequential": False,}, daemon=True)
+            listen_keyboard_thread = threading.Thread(target=listen_keyboard, 
+                                                      kwargs={"on_press": on_press, "until": None, "sequential": False,}, 
+                                                      daemon=True)
             listen_keyboard_thread.start()
 
         # image client
-        img_client = ImageClient(host='127.0.0.1')#host='192.168.123.164'
-        if not img_client.has_head_cam():
-            logger_mp.error("Head camera is required. Please enable head camera on the image server side.")
+        img_client = ImageClient(host=args.img_server_ip)
+        xr_need_local_img = not (args.pass_through or img_client.enable_head_webrtc())
 
-        head_img_shape = img_client.get_head_shape()
-        tv_binocular = img_client.is_binocular()
-
-        # television: obtain hand pose data from the XR device and transmit the robot's head camera image to the XR device.
-        tv_wrapper = TeleVuerWrapper(binocular=tv_binocular, use_hand_tracking=args.xr_mode == "hand", img_shape=head_img_shape, return_hand_rot_data = False)
+        # televuer_wrapper: obtain hand pose data from the XR device and transmit the robot's head camera image to the XR device.
+        tv_wrapper = TeleVuerWrapper(use_hand_tracking=args.xr_mode == "hand", 
+                                     pass_through=args.pass_through,
+                                     binocular=img_client.head_is_binocular(),
+                                     img_shape=img_client.get_head_shape(),
+                                     webrtc=img_client.enable_head_webrtc(),
+                                     webrtc_url=img_client.head_webrtc_url())
 
         # arm
         if args.arm == "G1_29":
@@ -136,28 +144,32 @@ if __name__ == '__main__':
             dual_hand_data_lock = Lock()
             dual_hand_state_array = Array('d', 14, lock = False)   # [output] current left, right hand state(14) data.
             dual_hand_action_array = Array('d', 14, lock = False)  # [output] current left, right hand action(14) data.
-            hand_ctrl = Dex3_1_Controller(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim)
+            hand_ctrl = Dex3_1_Controller(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, 
+                                          dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim)
         elif args.ee == "dex1":
             left_gripper_value = Value('d', 0.0, lock=True)        # [input]
             right_gripper_value = Value('d', 0.0, lock=True)       # [input]
             dual_gripper_data_lock = Lock()
             dual_gripper_state_array = Array('d', 2, lock=False)   # current left, right gripper state(2) data.
             dual_gripper_action_array = Array('d', 2, lock=False)  # current left, right gripper action(2) data.
-            gripper_ctrl = Dex1_1_Gripper_Controller(left_gripper_value, right_gripper_value, dual_gripper_data_lock, dual_gripper_state_array, dual_gripper_action_array, simulation_mode=args.sim)
+            gripper_ctrl = Dex1_1_Gripper_Controller(left_gripper_value, right_gripper_value, dual_gripper_data_lock, 
+                                                     dual_gripper_state_array, dual_gripper_action_array, simulation_mode=args.sim)
         elif args.ee == "inspire1":
             left_hand_pos_array = Array('d', 75, lock = True)      # [input]
             right_hand_pos_array = Array('d', 75, lock = True)     # [input]
             dual_hand_data_lock = Lock()
             dual_hand_state_array = Array('d', 12, lock = False)   # [output] current left, right hand state(12) data.
             dual_hand_action_array = Array('d', 12, lock = False)  # [output] current left, right hand action(12) data.
-            hand_ctrl = Inspire_Controller(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim)
+            hand_ctrl = Inspire_Controller(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, 
+                                           dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim)
         elif args.ee == "brainco":
             left_hand_pos_array = Array('d', 75, lock = True)      # [input]
             right_hand_pos_array = Array('d', 75, lock = True)     # [input]
             dual_hand_data_lock = Lock()
             dual_hand_state_array = Array('d', 12, lock = False)   # [output] current left, right hand state(12) data.
             dual_hand_action_array = Array('d', 12, lock = False)  # [output] current left, right hand action(12) data.
-            hand_ctrl = Brainco_Controller(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim)
+            hand_ctrl = Brainco_Controller(left_hand_pos_array, right_hand_pos_array, dual_hand_data_lock, 
+                                           dual_hand_state_array, dual_hand_action_array, simulation_mode=args.sim)
         else:
             pass
         
@@ -167,7 +179,7 @@ if __name__ == '__main__':
             p = psutil.Process(os.getpid())
             p.cpu_affinity([0,1,2,3]) # Set CPU affinity to cores 0-3
             try:
-                p.nice(-20) # Set highest priority
+                p.nice(-20)           # Set highest priority
                 logger_mp.info("Set high priority successfully.")
             except psutil.AccessDenied:
                 logger_mp.warning("Failed to set high priority. Please run as root.")
@@ -195,49 +207,39 @@ if __name__ == '__main__':
             sport_client.Init()
         
         # record + headless / non-headless mode
-        if args.record and args.headless:
-            recorder = EpisodeWriter(task_dir = args.task_dir + args.task_name, task_goal = args.task_desc, frequency = args.frequency, rerun_log = False)
-        elif args.record and not args.headless:
-            recorder = EpisodeWriter(task_dir = args.task_dir + args.task_name, task_goal = args.task_desc, frequency = args.frequency, rerun_log = True)
-
+        if args.record:
+            recorder = EpisodeWriter(task_dir = os.path.join(args.task_dir, args.task_name),
+                                     task_goal = args.task_goal,
+                                     task_desc = args.task_desc,
+                                     task_steps = args.task_steps,
+                                     frequency = args.frequency, 
+                                     rerun_log = not args.headless)
 
         logger_mp.info("Please enter the start signal (enter 'r' to start the subsequent program)")
-        while not START and not STOP:
-            # wait for start signal. by the way, get image and send it to xr
-            head_img, head_img_fps = img_client.get_head_frame()
-            tv_wrapper.set_display_image(head_img)
+        READY = True                  # now ready to (1) enter START state
+        while not START and not STOP: # wait for start or stop signal.
             time.sleep(0.033)
+            if img_client.enable_head_zmq() and xr_need_local_img:
+                head_img, _ = img_client.get_head_frame()
+                tv_wrapper.render_to_xr(head_img)
+
         logger_mp.info("start program.")
         arm_ctrl.speed_gradual_max()
-
         # main loop. robot start to follow VR user's motion
         while not STOP:
             start_time = time.time()
             # get image
-            head_img, head_img_fps = img_client.get_head_frame()
-            if img_client.has_left_wrist_cam():
-                left_wrist_img, _ = img_client.get_left_wrist_frame()
-            if img_client.has_right_wrist_cam():
-                right_wrist_img, _ = img_client.get_right_wrist_frame()
-            # send head rimage to xr
-            tv_wrapper.set_display_image(head_img)
-
-            # non-headless mode
-            if not args.headless:
-                resized_image = cv2.resize(head_img, (head_img_shape[1] // 2, head_img_shape[0] // 2))
-                cv2.imshow("record image", resized_image)
-                # opencv GUI communication
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
-                    START = False
-                    STOP = True
-                    if args.sim:
-                        publish_reset_category(2, reset_pose_publisher)
-                elif key == ord('s'):
-                    RECORD_TOGGLE = True
-                elif key == ord('a'):
-                    if args.sim:
-                        publish_reset_category(2, reset_pose_publisher)
+            if img_client.enable_head_zmq():
+                if args.record or xr_need_local_img:
+                    head_img, head_img_fps = img_client.get_head_frame()
+                if xr_need_local_img:
+                    tv_wrapper.render_to_xr(head_img)
+            if img_client.enable_left_wrist_zmq():
+                if args.record:
+                    left_wrist_img, _ = img_client.get_left_wrist_frame()
+            if img_client.enable_right_wrist_zmq():
+                if args.record:
+                    right_wrist_img, _ = img_client.get_right_wrist_frame()
 
             # record mode
             if args.record and RECORD_TOGGLE:
@@ -271,7 +273,7 @@ if __name__ == '__main__':
                 with right_gripper_value.get_lock():
                     right_gripper_value.value = tele_data.right_hand_pinchValue
             else:
-                pass        
+                pass
             
             # high level control
             if args.xr_mode == "controller" and args.motion:
@@ -300,7 +302,7 @@ if __name__ == '__main__':
 
             # record data
             if args.record:
-                RECORD_READY = recorder.is_ready()
+                READY = recorder.is_ready() # now ready to (2) enter RECORD_RUNNING state
                 # dex hand or gripper
                 if args.ee == "dex3" and args.xr_mode == "hand":
                     with dual_hand_data_lock:
@@ -352,18 +354,18 @@ if __name__ == '__main__':
                 if RECORD_RUNNING:
                     colors = {}
                     depths = {}
-                    if tv_binocular:
-                        colors[f"color_{0}"] = head_img[:, :head_img_shape[1]//2]
-                        colors[f"color_{1}"] = head_img[:, head_img_shape[1]//2:]
-                        if img_client.has_left_wrist_cam():
+                    if img_client.head_is_binocular():
+                        colors[f"color_{0}"] = head_img[:, :img_client.get_head_shape()[1]//2]
+                        colors[f"color_{1}"] = head_img[:, img_client.get_head_shape()[1]//2:]
+                        if img_client.enable_left_wrist_zmq():
                             colors[f"color_{2}"] = left_wrist_img
-                        if img_client.has_right_wrist_cam():
+                        if img_client.enable_right_wrist_zmq():
                             colors[f"color_{3}"] = right_wrist_img
                     else:
                         colors[f"color_{0}"] = head_img
-                        if img_client.has_left_wrist_cam():
+                        if img_client.enable_left_wrist_zmq():
                             colors[f"color_{1}"] = left_wrist_img
-                        if img_client.has_right_wrist_cam():
+                        if img_client.enable_right_wrist_zmq():
                             colors[f"color_{2}"] = right_wrist_img
                     states = {
                         "left_arm": {                                                                    

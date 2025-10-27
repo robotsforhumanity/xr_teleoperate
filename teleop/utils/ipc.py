@@ -22,12 +22,7 @@ logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
 3) start or stop (record toggle)
     {
         "reqid": unique id,
-        "cmd": "CMD_RECORD_TOGGLE",
-        "info": {                              # optional
-            "task_name": "T001",
-            "task_desc": "pick and place apple to basket",
-            "item_id": 1
-        }
+        "cmd": "CMD_RECORD_TOGGLE"
     }
 
 # Server → Client (Reply)
@@ -44,7 +39,6 @@ logger_mp = logging_mp.get_logger(__name__, level=logging_mp.INFO)
         "msg": "reqid not provided" 
              | "cmd not provided" 
              | "cmd not supported: {cmd}" 
-             | "info missing keys: {missing_keys}" 
              | "internal error msg"
     }
 
@@ -72,19 +66,18 @@ class IPC_Server:
         "CMD_RECORD_TOGGLE": "s",  # start & stop (toggle record)
     }
 
-    def __init__(self, on_press=None, on_info=None, get_state=None, hb_fps=10.0):
+    def __init__(self, on_press=None, get_state=None, hb_fps=10.0):
         """
         Args:
             on_press  : callback(cmd:str), called for every command
-            on_info   : callback(data:dict), only handle CMD_RECORD_TOGGLE's task info
-            hb_fps    : heartbeat publish frequency
             get_state : callback() -> dict, provides current heartbeat state
+            hb_fps    : heartbeat publish frequency
         """
         if callable(on_press):
             self.on_press = on_press
         else:
             raise ValueError("[IPC_Server] on_press callback function must be provided")
-        self.on_info = on_info
+
         if callable(get_state):
             self.get_state = get_state
         else:
@@ -171,23 +164,6 @@ class IPC_Server:
             # unsupported cmd
             if cmd not in self.cmd_map:
                 return {"repid": reqid, "status": "error", "msg": f"cmd not supported: {cmd}"}
-
-            # CMD_RECORD_TOGGLE: optional info
-            if cmd == "CMD_RECORD_TOGGLE":
-                info = msg.get("info", None)
-                if info:
-                    required_keys = ["task_name", "task_desc", "item_id"]
-                    missing_keys = [key for key in required_keys if key not in info]
-                    if missing_keys:
-                        return {"repid": reqid, "status": "error", "msg": f"info missing keys: {missing_keys}"}
-                    else:
-                        if self.on_info:
-                            self.on_info(info)
-                            logger_mp.debug(f"[IPC_Server] on_info called with info: {info}")
-                        else:
-                            logger_mp.warning("[IPC_Server] No on_info provided")
-                else:
-                    logger_mp.warning("[IPC_Server] No info provided with cmd: CMD_RECORD_TOGGLE")
                     
             # supported cmd path
             self.on_press(self.cmd_map[cmd])
@@ -232,7 +208,7 @@ class IPC_Server:
 class IPC_Client:
     """
     Inter - Process Communication Client:
-    - Send command/info via REQ
+    - Send command via REQ
     - Subscribe heartbeat via SUB
     """
     def __init__(self, hb_fps=10.0):
@@ -300,7 +276,7 @@ class IPC_Client:
     # ---------------------------
     # Public API
     # ---------------------------
-    def send_data(self, cmd: str, info: dict = None) -> dict:
+    def send_data(self, cmd: str) -> dict:
         """Send command to server and wait reply"""
         reqid = self._make_reqid()
         if not self.is_online():
@@ -308,8 +284,6 @@ class IPC_Client:
             return {"repid": reqid, "status": "error", "msg": "server offline (no heartbeat)"}
         
         msg = {"reqid": reqid, "cmd": cmd}
-        if cmd == "CMD_RECORD_TOGGLE" and info:
-            msg["info"] = info
         try:
             self.req_socket.send_json(msg)
             # wait up to 1s for reply
@@ -374,13 +348,8 @@ if __name__ == "__main__":
             logger_mp.info("Reply: %s", rep)
 
         elif key == "s":
-            info = {
-                "task_name": "T003",
-                "task_desc": "pick and place pear.",
-                "item_id": 1,
-            }
             logger_mp.info("⏺️ Sending record toggle command...")
-            rep = client.send_data("CMD_RECORD_TOGGLE", info=info) # optional info
+            rep = client.send_data("CMD_RECORD_TOGGLE")
             logger_mp.info("Reply: %s", rep)
             
 

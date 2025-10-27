@@ -419,7 +419,7 @@ if __name__ == "__main__":
     if not img_client.has_head_cam():
         logger_mp.error("Head camera is required. Please enable head camera on the image server side.")
     head_img_shape = img_client.get_head_shape()
-    tv_binocular = img_client.is_binocular()
+    tv_binocular = img_client.head_is_binocular()
 
     # television: obtain hand pose data from the XR device and transmit the robot's head camera image to the XR device.
     tv_wrapper = TeleVuerWrapper(binocular=tv_binocular, use_hand_tracking=args.xr_mode == "hand", img_shape=head_img_shape, return_hand_rot_data = False)

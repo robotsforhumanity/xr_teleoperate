@@ -11,7 +11,7 @@ import logging_mp
 logger_mp = logging_mp.get_logger(__name__)
 
 class EpisodeWriter():
-    def __init__(self, task_dir, task_goal=None, frequency=30, image_size=[640, 480], rerun_log = True):
+    def __init__(self, task_dir, task_goal=None, task_desc = None, task_steps = None, frequency=30, image_size=[640, 480], rerun_log = True):
         """
         image_size: [width, height]
         """
@@ -24,6 +24,10 @@ class EpisodeWriter():
         }
         if task_goal is not None:
             self.text['goal'] = task_goal
+        if task_desc is not None:
+            self.text['desc'] = task_desc
+        if task_steps is not None:
+            self.text['steps'] = task_steps
 
         self.frequency = frequency
         self.image_size = image_size
@@ -37,7 +41,7 @@ class EpisodeWriter():
         self.item_id = -1
         self.episode_id = -1
         if os.path.exists(self.task_dir):
-            episode_dirs = [episode_dir for episode_dir in os.listdir(self.task_dir) if 'episode_' in episode_dir]
+            episode_dirs = [episode_dir for episode_dir in os.listdir(self.task_dir) if 'episode_' in episode_dir and not episode_dir.endswith('.zip')]
             episode_last = sorted(episode_dirs)[-1] if len(episode_dirs) > 0 else None
             self.episode_id = 0 if episode_last is None else int(episode_last.split('_')[-1])
             logger_mp.info(f"==> task_dir directory already exist, now self.episode_id is:{self.episode_id}\n")
