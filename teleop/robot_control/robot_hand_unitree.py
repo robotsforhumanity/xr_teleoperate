@@ -13,7 +13,7 @@ import time
 import os
 import sys
 import threading
-from multiprocessing import Process, shared_memory, Array, Value, Lock
+from multiprocessing import Process, Array, Value, Lock
 
 parent2_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(parent2_dir)
@@ -100,7 +100,7 @@ class Dex3_1_Controller:
         hand_control_process.daemon = True
         hand_control_process.start()
 
-        logger_mp.info("Initialize Dex3_1_Controller OK!\n")
+        logger_mp.info("Initialize Dex3_1_Controller OK!")
 
     def _subscribe_hand_state(self):
         while True:
@@ -304,7 +304,7 @@ class Dex1_1_Gripper_Controller:
         self.gripper_control_thread.daemon = True
         self.gripper_control_thread.start()
 
-        logger_mp.info("Initialize Dex1_1_Gripper_Controller OK!\n")
+        logger_mp.info("Initialize Dex1_1_Gripper_Controller OK!")
 
     def _subscribe_gripper_state(self):
         while True:

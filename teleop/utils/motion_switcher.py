@@ -9,7 +9,7 @@ import time
 class MotionSwitcher:
     def __init__(self):
         self.msc = MotionSwitcherClient()
-        self.msc.SetTimeout(5.0)
+        self.msc.SetTimeout(1.0)
         self.msc.Init()
 
     def Enter_Debug_Mode(self):
@@ -27,7 +27,7 @@ class MotionSwitcher:
 class LocoClientWrapper:
     def __init__(self):
         self.client = LocoClient()
-        self.client.SetTimeout(1.0)
+        self.client.SetTimeout(0.0001)
         self.client.Init()
 
     def Enter_Damp_Mode(self):

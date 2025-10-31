@@ -1,6 +1,5 @@
 import time
 import argparse
-import cv2
 from multiprocessing import Value, Array, Lock
 import threading
 import logging_mp
@@ -19,7 +18,7 @@ from teleop.robot_control.robot_arm_ik import G1_29_ArmIK, G1_23_ArmIK, H1_2_Arm
 from teleop.robot_control.robot_hand_unitree import Dex3_1_Controller, Dex1_1_Gripper_Controller
 from teleop.robot_control.robot_hand_inspire import Inspire_Controller
 from teleop.robot_control.robot_hand_brainco import Brainco_Controller
-from teleimager import ImageClient
+from teleimager.image_client import ImageClient
 from teleop.utils.episode_writer import EpisodeWriter
 from teleop.utils.ipc import IPC_Server
 from teleop.utils.motion_switcher import MotionSwitcher, LocoClientWrapper
@@ -76,7 +75,7 @@ def get_state() -> dict:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # basic control parameters
-    parser.add_argument('--frequency', type = float, default = 30.0, help = 'control and record \'s frequency')
+    parser.add_argument('--frequency', type = float, default = 60.0, help = 'control and record \'s frequency')
     parser.add_argument('--xr-mode', type=str, choices=['hand', 'controller'], default='hand', help='Select XR device tracking source')
     parser.add_argument('--arm', type=str, choices=['G1_29', 'G1_23', 'H1_2', 'H1'], default='G1_29', help='Select arm controller')
     parser.add_argument('--ee', type=str, choices=['dex1', 'dex3', 'inspire1', 'brainco'], help='Select end effector controller')
@@ -86,7 +85,7 @@ if __name__ == '__main__':
     parser.add_argument('--sim', action = 'store_true', help = 'Enable isaac simulation mode')
     parser.add_argument('--ipc', action = 'store_true', help = 'Enable IPC server to handle input; otherwise enable sshkeyboard')
     parser.add_argument('--pass-through', action='store_true', help='Enable passthrough mode (use real-world view in XR device)')
-    parser.add_argument('--img-server-ip', type=str, default='192.168.123.164', help='IP address of image server')
+    parser.add_argument('--img-server-ip', type=str, default='127.0.0.1', help='IP address of image server')
     parser.add_argument('--affinity', action = 'store_true', help = 'Enable high priority and set CPU affinity mode')
     # record mode and task info
     parser.add_argument('--record', action = 'store_true', help = 'Enable data recording mode')
@@ -113,15 +112,17 @@ if __name__ == '__main__':
 
         # image client
         img_client = ImageClient(host=args.img_server_ip)
-        xr_need_local_img = not (args.pass_through or img_client.enable_head_webrtc())
+        camera_config = img_client.get_cam_config()
+        logger_mp.debug(f"Camera config: {camera_config}")
+        xr_need_local_img = not (args.pass_through or camera_config['head_camera']['enable_webrtc'])
 
         # televuer_wrapper: obtain hand pose data from the XR device and transmit the robot's head camera image to the XR device.
         tv_wrapper = TeleVuerWrapper(use_hand_tracking=args.xr_mode == "hand", 
                                      pass_through=args.pass_through,
-                                     binocular=img_client.head_is_binocular(),
-                                     img_shape=img_client.get_head_shape(),
-                                     webrtc=img_client.enable_head_webrtc(),
-                                     webrtc_url=img_client.head_webrtc_url())
+                                     binocular=camera_config['head_camera']['binocular'],
+                                     img_shape=camera_config['head_camera']['image_shape'],
+                                     webrtc=camera_config['head_camera']['enable_webrtc'],
+                                     webrtc_url=f"https://{args.img_server_ip}:{camera_config['head_camera']['webrtc_port']}/offer")
 
         # arm
         if args.arm == "G1_29":
@@ -221,25 +222,26 @@ if __name__ == '__main__':
         READY = True                  # now ready to (1) enter START state
         while not START and not STOP: # wait for start or stop signal.
             time.sleep(0.033)
-            if img_client.enable_head_zmq() and xr_need_local_img:
+            if camera_config['head_camera']['enable_zmq'] and xr_need_local_img:
                 head_img, _ = img_client.get_head_frame()
+                print(f"head_img: {type(head_img)}, {head_img.shape if head_img is not None else None}")
                 tv_wrapper.render_to_xr(head_img)
 
-        logger_mp.info("start program.")
+        logger_mp.info("---------------------🚀start program🚀-------------------------")
         arm_ctrl.speed_gradual_max()
         # main loop. robot start to follow VR user's motion
         while not STOP:
             start_time = time.time()
             # get image
-            if img_client.enable_head_zmq():
+            if camera_config['head_camera']['enable_zmq']:
                 if args.record or xr_need_local_img:
                     head_img, head_img_fps = img_client.get_head_frame()
                 if xr_need_local_img:
                     tv_wrapper.render_to_xr(head_img)
-            if img_client.enable_left_wrist_zmq():
+            if camera_config['left_wrist_camera']['enable_zmq']:
                 if args.record:
                     left_wrist_img, _ = img_client.get_left_wrist_frame()
-            if img_client.enable_right_wrist_zmq():
+            if camera_config['right_wrist_camera']['enable_zmq']:
                 if args.record:
                     right_wrist_img, _ = img_client.get_right_wrist_frame()
 
@@ -356,19 +358,37 @@ if __name__ == '__main__':
                 if RECORD_RUNNING:
                     colors = {}
                     depths = {}
-                    if img_client.head_is_binocular():
-                        colors[f"color_{0}"] = head_img[:, :img_client.get_head_shape()[1]//2]
-                        colors[f"color_{1}"] = head_img[:, img_client.get_head_shape()[1]//2:]
-                        if img_client.enable_left_wrist_zmq():
-                            colors[f"color_{2}"] = left_wrist_img
-                        if img_client.enable_right_wrist_zmq():
-                            colors[f"color_{3}"] = right_wrist_img
+                    if camera_config['head_camera']['binocular']:
+                        if head_img is not None:
+                            colors[f"color_{0}"] = head_img[:, :camera_config['head_camera']['image_shape'][1]//2]
+                            colors[f"color_{1}"] = head_img[:, camera_config['head_camera']['image_shape'][1]//2:]
+                        else:
+                            logger_mp.warning("Head image is None!")
+                        if camera_config['left_wrist_camera']['enable_zmq']:
+                            if left_wrist_img is not None:
+                                colors[f"color_{2}"] = left_wrist_img
+                            else:
+                                logger_mp.warning("Left wrist image is None!")
+                        if camera_config['right_wrist_camera']['enable_zmq']:
+                            if right_wrist_img is not None:
+                                colors[f"color_{3}"] = right_wrist_img
+                            else:
+                                logger_mp.warning("Right wrist image is None!")
                     else:
-                        colors[f"color_{0}"] = head_img
-                        if img_client.enable_left_wrist_zmq():
-                            colors[f"color_{1}"] = left_wrist_img
-                        if img_client.enable_right_wrist_zmq():
-                            colors[f"color_{2}"] = right_wrist_img
+                        if head_img is not None:
+                            colors[f"color_{0}"] = head_img
+                        else:
+                            logger_mp.warning("Head image is None!")
+                        if camera_config['left_wrist_camera']['enable_zmq']:
+                            if left_wrist_img is not None:
+                                colors[f"color_{1}"] = left_wrist_img
+                            else:
+                                logger_mp.warning("Left wrist image is None!")
+                        if camera_config['right_wrist_camera']['enable_zmq']:
+                            if right_wrist_img is not None:
+                                colors[f"color_{2}"] = right_wrist_img
+                            else:
+                                logger_mp.warning("Right wrist image is None!")
                     states = {
                         "left_arm": {                                                                    
                             "qpos":   left_arm_state.tolist(),    # numpy.array -> list
