@@ -13,16 +13,22 @@ class MotionSwitcher:
         self.msc.Init()
 
     def Enter_Debug_Mode(self):
-        status, result = self.msc.CheckMode()
-        while result['name']:
-            self.msc.ReleaseMode()
+        try:
             status, result = self.msc.CheckMode()
-            time.sleep(1)
-        return status, result
+            while result['name']:
+                self.msc.ReleaseMode()
+                status, result = self.msc.CheckMode()
+                time.sleep(1)
+            return status, result
+        except Exception as e:
+            return None, None
     
     def Exit_Debug_Mode(self):
-        status, result = self.msc.SelectMode(nameOrAlias='ai')
-        return status, result
+        try:
+            status, result = self.msc.SelectMode(nameOrAlias='ai')
+            return status, result
+        except Exception as e:
+            return None, None
 
 class LocoClientWrapper:
     def __init__(self):

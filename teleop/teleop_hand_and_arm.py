@@ -212,8 +212,8 @@ if __name__ == '__main__':
                 loco_wrapper = LocoClientWrapper()
         else:
             motion_switcher = MotionSwitcher()
-            # status, result = motion_switcher.Enter_Debug_Mode()
-            # logger_mp.info(f"Enter debug mode: {status}, {result}")
+            status, result = motion_switcher.Enter_Debug_Mode()
+            logger_mp.info(f"Enter debug mode: {status}, {result}")
         
         # record + headless / non-headless mode
         if args.record:
