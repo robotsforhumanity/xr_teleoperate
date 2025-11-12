@@ -76,17 +76,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     # basic control parameters
     parser.add_argument('--frequency', type = float, default = 30.0, help = 'control and record \'s frequency')
-    parser.add_argument('--xr-mode', type=str, choices=['hand', 'controller'], default='hand', help='Select XR device tracking source')
+    parser.add_argument('--input-mode', type=str, choices=['hand', 'controller'], default='hand', help='Select XR device input tracking source')
+    parser.add_argument('--display-mode', type=str, choices=['immersive', 'ego', 'pass-through'], default='immersive', help='Select XR device display mode')
     parser.add_argument('--arm', type=str, choices=['G1_29', 'G1_23', 'H1_2', 'H1'], default='G1_29', help='Select arm controller')
     parser.add_argument('--ee', type=str, choices=['dex1', 'dex3', 'inspire_ftp', 'inspire_dfx', 'brainco'], help='Select end effector controller')
+    parser.add_argument('--img-server-ip', type=str, default='10.0.7.96', help='IP address of image server, used by teleimager and televuer')
     # mode flags
     parser.add_argument('--motion', action = 'store_true', help = 'Enable motion control mode')
     parser.add_argument('--headless', action='store_true', help='Enable headless mode (no display)')
     parser.add_argument('--sim', action = 'store_true', help = 'Enable isaac simulation mode')
     parser.add_argument('--ipc', action = 'store_true', help = 'Enable IPC server to handle input; otherwise enable sshkeyboard')
-    parser.add_argument('--pass-through', action='store_true', help='Enable passthrough mode (use real-world view in XR device)')
     parser.add_argument('--affinity', action = 'store_true', help = 'Enable high priority and set CPU affinity mode')
-    parser.add_argument('--img-server-ip', type=str, default='192.168.123.164', help='IP address of image server')
     # record mode and task info
     parser.add_argument('--record', action = 'store_true', help = 'Enable data recording mode')
     parser.add_argument('--task-dir', type = str, default = './utils/data/', help = 'path to save data')
@@ -114,20 +114,24 @@ if __name__ == '__main__':
         img_client = ImageClient(host=args.img_server_ip)
         camera_config = img_client.get_cam_config()
         logger_mp.debug(f"Camera config: {camera_config}")
-        xr_need_local_img = not (args.pass_through or camera_config['head_camera']['enable_webrtc'])
+        xr_need_local_img = not (args.display_mode == 'pass-through' or camera_config['head_camera']['enable_webrtc'])
 
         # televuer_wrapper: obtain hand pose data from the XR device and transmit the robot's head camera image to the XR device.
-        tv_wrapper = TeleVuerWrapper(use_hand_tracking=args.xr_mode == "hand", 
-                                     pass_through=args.pass_through,
+        tv_wrapper = TeleVuerWrapper(use_hand_tracking=args.input_mode == "hand", 
                                      binocular=camera_config['head_camera']['binocular'],
                                      img_shape=camera_config['head_camera']['image_shape'],
+                                     # maybe should decrease fps for better performance?
+                                     # https://github.com/unitreerobotics/xr_teleoperate/issues/172
+                                     # display_fps=camera_config['head_camera']['fps'] ? args.frequency? 30.0?
+                                     display_mode=args.display_mode,
+                                     zmq=camera_config['head_camera']['enable_zmq'],
                                      webrtc=camera_config['head_camera']['enable_webrtc'],
                                      webrtc_url=f"https://{args.img_server_ip}:{camera_config['head_camera']['webrtc_port']}/offer",
-                                     display_fps=args.frequency)
+                                     )
         
         # motion mode (G1: Regular mode R1+X, not Running mode R2+A)
         if args.motion:
-            if args.xr_mode == "controller":
+            if args.input_mode == "controller":
                 loco_wrapper = LocoClientWrapper()
         else:
             motion_switcher = MotionSwitcher()
@@ -267,17 +271,17 @@ if __name__ == '__main__':
 
             # get xr's tele data
             tele_data = tv_wrapper.get_tele_data()
-            if (args.ee == "dex3" or args.ee == "inspire1" or args.ee == "brainco") and args.xr_mode == "hand":
+            if (args.ee == "dex3" or args.ee == "inspire1" or args.ee == "brainco") and args.input_mode == "hand":
                 with left_hand_pos_array.get_lock():
                     left_hand_pos_array[:] = tele_data.left_hand_pos.flatten()
                 with right_hand_pos_array.get_lock():
                     right_hand_pos_array[:] = tele_data.right_hand_pos.flatten()
-            elif args.ee == "dex1" and args.xr_mode == "controller":
+            elif args.ee == "dex1" and args.input_mode == "controller":
                 with left_gripper_value.get_lock():
                     left_gripper_value.value = tele_data.left_ctrl_triggerValue
                 with right_gripper_value.get_lock():
                     right_gripper_value.value = tele_data.right_ctrl_triggerValue
-            elif args.ee == "dex1" and args.xr_mode == "hand":
+            elif args.ee == "dex1" and args.input_mode == "hand":
                 with left_gripper_value.get_lock():
                     left_gripper_value.value = tele_data.left_hand_pinchValue
                 with right_gripper_value.get_lock():
@@ -286,7 +290,7 @@ if __name__ == '__main__':
                 pass
             
             # high level control
-            if args.xr_mode == "controller" and args.motion:
+            if args.input_mode == "controller" and args.motion:
                 # quit teleoperate
                 if tele_data.right_ctrl_aButton:
                     START = False
@@ -314,7 +318,7 @@ if __name__ == '__main__':
             if args.record:
                 READY = recorder.is_ready() # now ready to (2) enter RECORD_RUNNING state
                 # dex hand or gripper
-                if args.ee == "dex3" and args.xr_mode == "hand":
+                if args.ee == "dex3" and args.input_mode == "hand":
                     with dual_hand_data_lock:
                         left_ee_state = dual_hand_state_array[:7]
                         right_ee_state = dual_hand_state_array[-7:]
@@ -322,7 +326,7 @@ if __name__ == '__main__':
                         right_hand_action = dual_hand_action_array[-7:]
                         current_body_state = []
                         current_body_action = []
-                elif args.ee == "dex1" and args.xr_mode == "hand":
+                elif args.ee == "dex1" and args.input_mode == "hand":
                     with dual_gripper_data_lock:
                         left_ee_state = [dual_gripper_state_array[0]]
                         right_ee_state = [dual_gripper_state_array[1]]
@@ -330,7 +334,7 @@ if __name__ == '__main__':
                         right_hand_action = [dual_gripper_action_array[1]]
                         current_body_state = []
                         current_body_action = []
-                elif args.ee == "dex1" and args.xr_mode == "controller":
+                elif args.ee == "dex1" and args.input_mode == "controller":
                     with dual_gripper_data_lock:
                         left_ee_state = [dual_gripper_state_array[0]]
                         right_ee_state = [dual_gripper_state_array[1]]
@@ -340,7 +344,7 @@ if __name__ == '__main__':
                         current_body_action = [-tele_data.left_ctrl_thumbstickValue[1]  * 0.3,
                                                -tele_data.left_ctrl_thumbstickValue[0]  * 0.3,
                                                -tele_data.right_ctrl_thumbstickValue[0] * 0.3]
-                elif (args.ee == "inspire_dfx" or args.ee == "inspire_ftp" or args.ee == "brainco") and args.xr_mode == "hand":
+                elif (args.ee == "inspire_dfx" or args.ee == "inspire_ftp" or args.ee == "brainco") and args.input_mode == "hand":
                     with dual_hand_data_lock:
                         left_ee_state = dual_hand_state_array[:6]
                         right_ee_state = dual_hand_state_array[-6:]

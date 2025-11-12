@@ -7,16 +7,18 @@
 - 升级 [televuer](https://github.com/silencht/televuer)，具体请查看仓库README。
 
   > 新版本的 [teleimager](https://github.com/silencht/teleimager/commit/ab5018691943433c24af4c9a7f3ea0c9a6fbaf3c) + [televuer](https://github.com/silencht/televuer/releases/tag/v3.0) 支持通过 **webrtc** 传输头部相机图像
+  >
+  > 支持 pass-through, ego, immersive 三种模式：pass-through 为通透模式，直接通过 VR 相机查看现实世界来观察机器人；ego 是在通透模式的基础上，添加一个机器人视角的小窗；immersive 是完全沉浸机器人第一人称视角模式。
 
 - 丰富**录制模式**下的任务信息传递参数，修复和完善 EpisodeWriter。
 
 - 完善系统的**状态机信息**、IPC模式。
 
-- 新增 **pass-through 模式**，可以通过VR设备摄像头直接透视外界环境（而不借助机器人头部相机）
-
 - 新增 **affinity CPU 亲和模式**，如果你不了解该模式，那么请无视它。
 
 - 新增 **motion-switcher 功能**，无需遥控器即可自动进退 debug 模式。
+
+- 支持 **inspire_FTP** 灵巧手
 
 ## 🏷️ v1.3
 
