@@ -227,7 +227,7 @@ class SimStateSubscriber:
         self.stop_subscribe()
 
 
-def start_sim_state_subscribe(shm_name: str = "sim_state_cmd_data", shm_size: int = 3096) -> SimStateSubscriber:
+def start_sim_state_subscribe(shm_name: str = "sim_state_cmd_data", shm_size: int = 4096) -> SimStateSubscriber:
     """Start sim state subscribing
     
     Args:
