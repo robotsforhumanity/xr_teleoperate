@@ -67,7 +67,7 @@ class Brainco_Controller:
         hand_control_process.daemon = True
         hand_control_process.start()
 
-        logger_mp.info("Initialize brainco_Controller OK!\n")
+        logger_mp.info("Initialize brainco_Controller OK!")
 
     def _subscribe_hand_state(self):
         while True:

@@ -6,6 +6,9 @@
   <p align="center">
     <a> English </a> | <a href="README_zh-CN.md">中文</a> | <a href="README_ja-JP.md">日本語</a>
   </p>
+  <p align="center">
+    <a href="https://github.com/unitreerobotics/xr_teleoperate/wiki" target="_blank"> <img src="https://img.shields.io/badge/GitHub-Wiki-181717?logo=github" alt="Unitree LOGO"></a> <a href="https://discord.gg/ZwcVwxv5rq" target="_blank"><img src="https://img.shields.io/badge/-Discord-5865F2?style=flat&logo=Discord&logoColor=white" alt="Unitree LOGO"></a>
+  </p>
 </div>
 
 
@@ -31,53 +34,35 @@
 </p>
 
 
-# 🔖 Release Note
+# 🔖[Release Note](CHANGELOG.md)
 
-## 🏷️ v1.2
+## 🏷️ v1.4
 
-1. Upgrade the Dex1_1 gripper control code to be compatible with the [dex1_1 service](https://github.com/unitreerobotics/dex1_1_service) driver.
+- The **image server** has been changed to [teleimager](https://github.com/silencht/teleimager). Please refer to the repository README for details.
 
-## 🏷️ v1.1
+- Upgraded [televuer](https://github.com/silencht/televuer). Please see the repository README for details.
 
-1. Added support for a new end-effector type: **`brainco`**, which refers to the [Brain Hand](https://www.brainco-hz.com/docs/revolimb-hand/) developed by [BrainCo](https://www.brainco.cn/#/product/dexterous).
-2. Changed the **DDS domain ID** to `1` in **simulation mode** to prevent conflicts during physical deployment.
-3. Fixed an issue where the default frequency was set too high.
+  > The new versions of [teleimager](https://github.com/silencht/teleimager/commit/ab5018691943433c24af4c9a7f3ea0c9a6fbaf3c) + [televuer](https://github.com/silencht/televuer/releases/tag/v3.0) support transmitting **head camera images via WebRTC**.
+  >  Supports **pass-through**, **ego**, and **immersive** modes.
 
-## 🏷️ v1.0 (newvuer)
+- Improved the system’s **state machine** information and IPC mode.
 
-1. Upgraded the [Vuer](https://github.com/vuer-ai/vuer) library to version **v0.0.60**, expanding XR device support to two modes: **hand tracking** and **controller tracking**. The project has been renamed from **`avp_teleoperate`** to **`xr_teleoperate`** to better reflect its broader capabilities.
+- Added support for **Inspire_FTP dexterous hand**.
 
-   Devices tested include: Apple Vision Pro, Meta Quest 3 (with controllers), and PICO 4 Ultra Enterprise (with controllers).
-
-2. Modularized parts of the codebase and integrated **Git submodules** (`git submodule`) to improve code clarity and maintainability.
-
-3. Introduced **headless**, **motion control**, and **simulation** modes. Startup parameter configuration has been streamlined for ease of use (see Section 2.2).
-   The **simulation** mode enables environment validation and hardware failure diagnostics.
-
-4. Changed the default hand retargeting algorithm from *Vector* to **DexPilot**, enhancing the precision and intuitiveness of fingertip pinching interactions.
-
-5. Various other improvements and optimizations.
-
-## 🏷️ v0.5 (oldvuer)
-
-1. The repository was named **`avp_teleoperate`** in this version.
-2. Supported robot included: `G1_29`, `G1_23`, `H1_2`, and `H1`.
-3. Supported end-effectors included: `dex3`, `dex1(gripper)`, and `inspire1`.
-4. Only supported **hand tracking mode** for XR devices (using [Vuer](https://github.com/vuer-ai/vuer) version **v0.0.32RC7**).
-   **Controller tracking mode** was **not** supported. 
-5. Data recording mode was available.
-
-
+- …
 
 # 0. 📖 Introduction
 
 This repository implements **teleoperation** control of a **Unitree humanoid robot** using **XR (Extended Reality) devices** (such as Apple Vision Pro, PICO 4 Ultra Enterprise, or Meta Quest 3). 
 
+> If you have never worked with a Unitree robot before, please at least read up to the “Application Development” chapter in the [official documentation](https://support.unitree.com/main/en) first.
+Additionally, the [Wiki of this repo](https://github.com/unitreerobotics/xr_teleoperate/wiki) contains a wealth of background knowledge that you can reference at any time.
+
 Here are the required devices and wiring diagram,
 
 <p align="center">
-  <a href="https://oss-global-cdn.unitree.com/static/3f75e91e41694ed28c29bcad22954d1d_5990x4050.png">
-    <img src="https://oss-global-cdn.unitree.com/static/3f75e91e41694ed28c29bcad22954d1d_5990x4050.png" alt="System Diagram" style="width: 100%;">
+  <a href="https://oss-global-cdn.unitree.com/static/55fb9cd245854810889855010da296f7_3415x2465.png">
+    <img src="https://oss-global-cdn.unitree.com/static/55fb9cd245854810889855010da296f7_3415x2465.png" alt="System Diagram" style="width: 100%;">
   </a>
 </p>
 
@@ -146,18 +131,54 @@ For more information, you can refer to [Official Documentation ](https://support
 (tv) unitree@Host:~$ cd xr_teleoperate
 # Shallow clone submodule
 (tv) unitree@Host:~/xr_teleoperate$ git submodule update --init --depth 1
+```
+
+```bash
+# Install teleimager submodule
+(tv) unitree@Host:~/xr_teleoperate$ cd teleop/teleimager
+(tv) unitree@Host:~/xr_teleoperate/teleop/teleimager$ pip install -e . --no-deps
+```
+
+```bash
 # Install televuer submodule
 (tv) unitree@Host:~/xr_teleoperate$ cd teleop/televuer
 (tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ pip install -e .
-# Generate the certificate files required for televuer submodule
+
+# Configure SSL certificates for the televuer module so that XR devices (e.g., Pico / Quest / Apple Vision Pro) can securely connect via HTTPS / WebRTC
+# 1. Generate certificate files
+# 1.1 For Pico / Quest XR devices
 (tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout key.pem -out cert.pem
-# Install dex-retargeting submodule
-(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ cd ../robot_control/dex-retargeting/
-(tv) unitree@Host:~/xr_teleoperate/teleop/robot_control/dex-retargeting$ pip install -e .
-# Install additional dependencies required by this repo
-(tv) unitree@Host:~/xr_teleoperate/teleop/robot_control/dex-retargeting$ cd ../../../
-(tv) unitree@Host:~/xr_teleoperate$ pip install -r requirements.txt
+# 1.2 For Apple Vision Pro
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ openssl genrsa -out rootCA.key 2048
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ openssl req -x509 -new -nodes -key rootCA.key -sha256 -days 365 -out rootCA.pem -subj "/CN=xr-teleoperate"
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ openssl genrsa -out key.pem 2048
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ openssl req -new -key key.pem -out server.csr -subj "/CN=localhost"
+# Create server_ext.cnf file with the following content (IP.2 should match your host IP, e.g., 192.168.123.2. Use ifconfig or similar to check)
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ vim server_ext.cnf
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = localhost
+IP.1 = 192.168.123.164
+IP.2 = 192.168.123.2
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ openssl x509 -req -in server.csr -CA rootCA.pem -CAkey rootCA.key -CAcreateserial -out cert.pem -days 365 -sha256 -extfile server_ext.cnf
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ ls
+build  cert.pem  key.pem  LICENSE  pyproject.toml  README.md  rootCA.key  rootCA.pem  rootCA.srl  server.csr  server_ext.cnf  src  test
+# Copy rootCA.pem to Apple Vision Pro via AirDrop and install it
+
+# Enable firewall
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ sudo ufw allow 8012
+
+# 2. Configure certificate paths, choose one method
+# 2.1 User config directory (optional)
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ mkdir -p ~/.config/xr_teleoperate/
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ cp cert.pem key.pem ~/.config/xr_teleoperate/
+# 2.2 Environment variables (optional)
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ echo 'export XR_TELEOP_CERT="$HOME/xr_teleoperate/teleop/televuer/cert.pem"' >> ~/.bashrc
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ echo 'export XR_TELEOP_KEY="$HOME/xr_teleoperate/teleop/televuer/key.pem"' >> ~/.bashrc
+(tv) unitree@Host:~/xr_teleoperate/teleop/televuer$ source ~/.bashrc
 ```
+
+
 
 ## 1.2 🕹️ unitree_sdk2_python
 
@@ -185,9 +206,46 @@ For more information, you can refer to [Official Documentation ](https://support
 >
 > You can refer to [Harley Hahn's Guide to Unix and Linux](https://www.harley.com/unix-book/book/chapters/04.html#H)  and  [Conda User Guide](https://docs.conda.io/projects/conda/en/latest/user-guide/getting-started.html) to learn more.
 
+
+
+## 1.3 🚀 Launch Parameter Description
+
+- **Basic control parameters**
+
+|    ⚙️ Parameter    |                        📜 Description                         |                     🔘 Available Options                      |     📌 Default     |
+| :---------------: | :----------------------------------------------------------: | :----------------------------------------------------------: | :---------------: |
+|   `--frequency`   |            Set the FPS for recording and control             |                  Any reasonable float value                  |       30.0        |
+|  `--input-mode`   |       Choose XR input mode (how to control the robot)        | `hand` (hand tracking)`controller` (controller tracking) |      `hand`       |
+| `--display-mode`  |  Choose XR display mode (how to view the robot perspective)  | `immersive` (immersive)`ego` (pass-through + small first-person window)`pass-through` (pass-through only) |    `immersive`    |
+|      `--arm`      |      Select the robot arm type (see 0. 📖 Introduction)       |                   `G1_29` `G1_23` `H1_2` `H1`                   |      `G1_29`      |
+|      `--ee`       | Select the end-effector type of the arm (see 0. 📖 Introduction) |       `dex1` `dex3` `inspire_ftp` `inspire_dfx` `brainco`        |       None        |
+| `--img-server-ip` | Set the image server IP address for receiving image streams and configuring WebRTC signaling |                        `IPv4` address                        | `192.168.123.164` |
+
+- **Mode switch parameters**
+
+| ⚙️ Parameter  |                        📜 Description                         |
+| :----------: | :----------------------------------------------------------: |
+|  `--motion`  | **Enable motion control mode** When enabled, the teleoperation program can run alongside the robot’s motion control program.In **hand tracking** mode, the [R3 controller](https://www.unitree.com/cn/R3) can be used to control normal robot walking; in **controller tracking** mode, joysticks can also control the robot’s movement. |
+| `--headless` | **Enable headless mode** For running the program on devices without a display, e.g., the Development Computing Unit (PC2). |
+|   `--sim`    | **Enable [simulation mode](https://github.com/unitreerobotics/unitree_sim_isaaclab)** |
+|   `--ipc`    | **Inter-process communication mode** Allows controlling the xr_teleoperate program’s state via IPC. Suitable for interaction with agent programs. |
+| `--affinity` | **CPU affinity mode** Set CPU core affinity. If you are unsure what this is, do not set it. |
+|  `--record`  | **Enable data recording mode** Press **r** to start teleoperation, then **s** to start recording; press **s** again to stop and save the episode. Press **s** repeatedly to repeat the process. |
+|  `--task-*`  | Configure the save path, target, description, and steps of the recorded task. |
+
+## 1.4 🔄 State Transition Diagram
+
+<p align="center">
+  <a href="https://oss-global-cdn.unitree.com/static/712c312b0ac3401f8d7d9001b1e14645_11655x4305.jpg">
+    <img src="https://oss-global-cdn.unitree.com/static/712c312b0ac3401f8d7d9001b1e14645_11655x4305.jpg" alt="System Diagram" style="width: 85%;">
+  </a>
+</p>
+
 # 2. 💻 Simulation Deployment
 
 ## 2.1 📥 Environment Setup
+
+> Since the image service has been upgraded to `teleimager`, the simulation deployment for v1.4 is temporarily unavailable. Please use v1.3 for testing for now.
 
 First, install [unitree_sim_isaaclab](https://github.com/unitreerobotics/unitree_sim_isaaclab). Follow that repo’s README.
 
@@ -213,23 +271,6 @@ Here is the simulation GUI:
 
 This program supports XR control of a physical robot or in simulation. Choose modes with command-line arguments:
 
-- **Basic control parameters**
-
-| ⚙️ Parameter |                 📜 Description                 |                          🔘 Options                           | 📌 Default |
-| :---------: | :-------------------------------------------: | :----------------------------------------------------------: | :-------: |
-| `--xr-mode` |             Choose XR input mode              | `hand` (**hand tracking**)<br/>`controller` (**controller tracking**) |  `hand`   |
-|   `--arm`   | Choose robot arm type (see 0. 📖 Introduction) |           `G1_29`<br/>`G1_23`<br/>`H1_2`<br/>`H1`            |  `G1_29`  |
-|   `--ee`    |  Choose end-effector (see 0. 📖 Introduction)  |       `dex1`<br/>`dex3`<br/>`inspire1`<br />`brainco`        |   none    |
-
-- **Mode flags**
-
-|    ⚙️ Flag    |                        📜 Description                         |
-| :----------: | :----------------------------------------------------------: |
-|  `--record`  | Enable **data recording**<br />After pressing **r** to start, press **s** to start/stop saving an episode. Can repeat. |
-|  `--motion`  | Enable **motion mode**<br />After enabling this mode, the teleoperation program can run alongside the robot's motion control.<br />In **hand tracking** mode, you can use the [R3 Controller](https://www.unitree.com/cn/R3) to control the robot's walking behavior; <br />in **controller tracking** mode, you can also use [controllers to control the robot’s movement](https://github.com/unitreerobotics/xr_teleoperate/blob/375cdc27605de377c698e2b89cad0e5885724ca6/teleop/teleop_hand_and_arm.py#L247-L257). |
-| `--headless` |        Run without GUI (for headless PC2 deployment)         |
-|   `--sim`    |                  Enable **simulation mode**                  |
-
 Assuming hand tracking with G1(29 DoF) + Dex3 in simulation with recording:
 
 ```bash
@@ -249,7 +290,26 @@ Next steps:
 
 2. Connect to the corresponding Wi‑Fi
 
-3. Open a browser (e.g. Safari or PICO Browser) and go to:  `https://192.168.123.2:8012?ws=wss://192.168.123.2:8012`
+3. Only proceed if your head camera has WebRTC enabled (`cam_config_server.yaml → head_camera → enable_webrtc: true`); otherwise jump to Step 4. Open a browser (e.g. Safari or PICO Browser) and go to:  
+   **https://192.168.123.164:60001**
+
+   > **Note 1:** This IP is the address of **PC2**—the machine running teleimager service.  
+   > **Note 2:** You may see a warning page like step 4. Click **Advanced**, then **Proceed to IP (unsafe)**. Once the page loads, press the **start** button in the top-left corner; if you see the head-camera preview, the check is successful.
+   >
+   > <p align="center">
+   >   <a href="https://oss-global-cdn.unitree.com/static/777f9c6f42d74eb2a6438d1509a73025_2475x1574.jpg">
+   >     <img src="https://oss-global-cdn.unitree.com/static/777f9c6f42d74eb2a6438d1509a73025_2475x1574.jpg" alt="webrtc_unsafe" style="width: 50%;">
+   >   </a>
+   > </p>
+   >
+   > **Note 3:** This step serves two purposes:  
+   >
+   > 1. Verify that the teleimager service is running correctly.  
+   > 2. Manually trust the WebRTC self-signed certificate.  
+   >
+   > Once this has been done on the same device with the same certificate, you can skip it on subsequent launches.
+
+4. Open a browser (e.g. Safari or PICO Browser) and go to:  `https://192.168.123.2:8012/?ws=wss://192.168.123.2:8012`
 
    > **Note 1**: This IP must match your **Host** IP (check with `ifconfig`).
    >
@@ -261,11 +321,11 @@ Next steps:
      </a>
    </p>
 
-4. In the Vuer web, click **Virtual Reality**. Allow all prompts to start the VR session.
+5. In the Vuer web, click **Virtual Reality**. Allow all prompts to start the VR session.
 
    <p align="center">  <a href="https://oss-global-cdn.unitree.com/static/fdeee4e5197f416290d8fa9ecc0b28e6_2480x1286.png">    <img src="https://oss-global-cdn.unitree.com/static/fdeee4e5197f416290d8fa9ecc0b28e6_2480x1286.png" alt="Vuer UI" style="width: 75%;">  </a> </p>
 
-5. You’ll see the robot’s first-person view in the headset. The terminal prints connection info:
+6. You’ll see the robot’s first-person view in the headset. The terminal prints connection info:
 
    ```bash
    websocket is connected. id:dbb8537d-a58c-4c57-b49d-cbb91bd25b90
@@ -273,19 +333,21 @@ Next steps:
    Uplink task running. id:dbb8537d-a58c-4c57-b49d-cbb91bd25b90
    ```
 
-6. Align your arm to the **robot’s initial pose** to avoid sudden movements at start:
+7. Align your arm to the **robot’s initial pose** to avoid sudden movements at start:
 
    <p align="center">  <a href="https://oss-global-cdn.unitree.com/static/2522a83214744e7c8c425cc2679a84ec_670x867.png">    <img src="https://oss-global-cdn.unitree.com/static/2522a83214744e7c8c425cc2679a84ec_670x867.png" alt="Initial Pose" style="width: 25%;">  </a> </p>
 
-7. Press **r** in the terminal to begin teleoperation. You can now control the robot arm and dexterous hand.
+8. Press **r** in the terminal to begin teleoperation. You can now control the robot arm and dexterous hand.
 
-8. During teleoperation, press **s** to start recording; press **s** again to stop and save. Repeatable process.
+9. During teleoperation, press **s** to start recording; press **s** again to stop and save. Repeatable process.
 
 <p align="center">  <a href="https://oss-global-cdn.unitree.com/static/f5b9b03df89e45ed8601b9a91adab37a_2397x1107.png">    <img src="https://oss-global-cdn.unitree.com/static/f5b9b03df89e45ed8601b9a91adab37a_2397x1107.png" alt="Recording Process" style="width: 75%;">  </a> </p>
 
 > **Note 1**: Recorded data is stored in `xr_teleoperate/teleop/utils/data` by default, with usage instructions at this repo:  [unitree_IL_lerobot](https://github.com/unitreerobotics/unitree_IL_lerobot/tree/main?tab=readme-ov-file#data-collection-and-conversion).
 >
 > **Note 2**: Please pay attention to your disk space size during data recording.
+>
+> **Note 3**: In v1.4 and above, the “record image” window has been removed.
 
 ## 2.3 🔚 Exit
 
@@ -301,85 +363,99 @@ Physical deployment steps are similar to simulation, with these key differences:
 
 In the simulation environment, the image service is automatically enabled. For physical deployment, you need to manually start the image service based on your specific camera hardware. The steps are as follows:
 
-Copy `image_server.py` in the `xr_teleoperate/teleop/image_server` directory to the **Development Computing Unit PC2** of Unitree Robot (G1/H1/H1_2/etc.), 
+1. Install the image service program on the **Development Computing Unit PC2** of the Unitree robot (G1/H1/H1_2, etc.)
 
-```bash
-# p.s. You can transfer image_server.py to PC2 via the scp command and then use ssh to remotely login to PC2 to execute it.
-# Assuming the IP address of the development computing unit PC2 is 192.168.123.164, the transmission process is as follows:
-# log in to PC2 via SSH and create the folder for the image server
-(tv) unitree@Host:~$ ssh unitree@192.168.123.164 "mkdir -p ~/image_server"
-# Copy the local image_server.py to the ~/image_server directory on PC2
-(tv) unitree@Host:~$ scp ~/xr_teleoperate/teleop/image_server/image_server.py unitree@192.168.123.164:~/image_server/
-```
+   ```bash
+   # SSH into PC2 and download the image service repository
+   
+   (base) unitree@PC2:~$ cd ~
+   (base) unitree@PC2:~$ git clone https://github.com/silencht/teleimager
+   
+   # Configure the environment according to the instructions in the teleimager repository README: https://github.com/silencht/teleimager/blob/main/README.md
+   ```
 
-and execute the following command **in the PC2**:
+2. On the **local host**, execute the following commands:
 
-```bash
-# p.s. Currently, this image transmission program supports two methods for reading images: OpenCV and Realsense SDK. Please refer to the comments in the `ImageServer` class within `image_server.py` to configure your image transmission service according to your camera hardware.
-# Now located in Unitree Robot PC2 terminal
-unitree@PC2:~/image_server$ python image_server.py
-# You can see the terminal output as follows:
-# {'fps': 30, 'head_camera_type': 'opencv', 'head_camera_image_shape': [480, 1280], 'head_camera_id_numbers': [0]}
-# [Image Server] Head camera 0 resolution: 480.0 x 1280.0
-# [Image Server] Image server has started, waiting for client connections...
-```
+   ```bash
+   # Copy the `key.pem` and `cert.pem` files configured in Section 1.1 from the **local host** `xr_teleoperate/teleop/televuer` directory to the corresponding path on PC2
+   
+   # These two files are required by teleimager to start the WebRTC service
+   (tv) unitree@Host:~$ scp ~/xr_teleoperate/teleop/televuer/key.pem ~/xr_teleoperate/teleop/televuer/cert.pem unitree@192.168.123.164:~/teleimager
+   
+   # On PC2, configure the certificate path according to the teleimager repository README, for example:
+   (teleimager) unitree@PC2:~$ cd teleimager
+   (teleimager) unitree@PC2:~$ mkdir -p ~/.config/xr_teleoperate/
+   (teleimager) unitree@PC2:~/teleimager$ cp cert.pem key.pem ~/.config/xr_teleoperate/
+   ```
 
-After image service is started, you can use `image_client.py` **in the Host** terminal to test whether the communication is successful:
+3. On the **development computing unit PC2**, configure `cam_config_server.yaml` according to the teleimager documentation and start the image service.
 
-```bash
-(tv) unitree@Host:~/xr_teleoperate/teleop/image_server$ python image_client.py
-```
+   ```bash
+   (teleimager) unitree@PC2:~/image_server$ python -m teleimager.image_server
+   
+   # The following command works the same way
+   (teleimager) unitree@PC2:~/image_server$ teleimager-server
+   ```
+
+4. On the **local host**, execute the following command to subscribe to the images
+
+   ```bash
+   (tv) unitree@Host:~$ cd ~/xr_teleoperate/teleop/teleimager/src
+   (tv) unitree@Host:~/xr_teleoperate/teleop/teleimager/src$ python -m teleimager.image_client --host 192.168.123.164
+   
+   # If the WebRTC image stream is set up, you can also open the URL [https://192.168.123.164:60001](https://192.168.123.164:60001) in a browser and click the Start button to test.
+   ```
+
+   
 
 ## 3.2 ✋ Inspire Hand Service (optional)
 
 > **Note 1**: Skip this if your config does not use the Inspire hand.
 >
-> **Note 2**: For the G1 robot with [Inspire DFX hand](https://support.unitree.com/home/zh/G1_developer/inspire_dfx_dexterous_hand), see [issue #46](https://github.com/unitreerobotics/xr_teleoperate/issues/46).
+> **Note 2**: For G1 robot with [Inspire DFX hand](https://support.unitree.com/home/zh/G1_developer/inspire_dfx_dexterous_hand), related issue [#46](https://github.com/unitreerobotics/xr_teleoperate/issues/46).
 >
-> **Note 3**: For [Inspire FTP hand]((https://support.unitree.com/home/zh/G1_developer/inspire_ftp_dexterity_hand)), see  [issue #48](https://github.com/unitreerobotics/xr_teleoperate/issues/48).
+> **Note 3**: For [Inspire FTP hand]((https://support.unitree.com/home/zh/G1_developer/inspire_ftp_dexterity_hand)), related issue [#48](https://github.com/unitreerobotics/xr_teleoperate/issues/48). FTP dexterous hand is now supported. Please refer to the `--ee` parameter for configuration.
 
-You can refer to [Dexterous Hand Development](https://support.unitree.com/home/zh/H1_developer/Dexterous_hand) to configure related environments and compile control programs. First, use [this URL](https://oss-global-cdn.unitree.com/static/0a8335f7498548d28412c31ea047d4be.zip) to download the dexterous hand control interface program. Copy it to **PC2** of  Unitree robots. 
+First, use [this URL: DFX_inspire_service](https://github.com/unitreerobotics/DFX_inspire_service) to clone the dexterous hand control interface program. And Copy it to **PC2** of  Unitree robots. 
 
 On Unitree robot's **PC2**, execute command:
 
 ```bash
 unitree@PC2:~$ sudo apt install libboost-all-dev libspdlog-dev
 # Build project
-unitree@PC2:~$ cd h1_inspire_service & mkdir build & cd build
-unitree@PC2:~/h1_inspire_service/build$ cmake .. -DCMAKE_BUILD_TYPE=Release
-unitree@PC2:~/h1_inspire_service/build$ make
-# Terminal 1. Run h1 inspire hand service
-unitree@PC2:~/h1_inspire_service/build$ sudo ./inspire_hand -s /dev/ttyUSB0
+unitree@PC2:~$ cd DFX_inspire_service && mkdir build && cd build
+unitree@PC2:~/DFX_inspire_service/build$ cmake ..
+unitree@PC2:~/DFX_inspire_service/build$ make -j6
+
+# (For unitree g1) Terminal 1.
+unitree@PC2:~/DFX_inspire_service/build$ sudo ./inspire_g1
+# or (For unitree h1) Terminal 1.
+unitree@PC2:~/DFX_inspire_service/build$ sudo ./inspire_h1 -s /dev/ttyUSB0
+
 # Terminal 2. Run example
-unitree@PC2:~/h1_inspire_service/build$ ./h1_hand_example
+unitree@PC2:~/DFX_inspire_service/build$ ./hand_example
 ```
 
-If two hands open and close continuously, it indicates success. Once successful, close the `./h1_hand_example` program in Terminal 2.
+If two hands open and close continuously, it indicates success. Once successful, close the `./hand_example` program in Terminal 2.
+
+
 
 ## 3.3 ✋ BrainCo Hand Service (Optional)
 
-Please refer to the [official documentation](https://support.unitree.com/home/en/G1_developer/brainco_hand) for setup instructions.
+Please refer to the [Repo README](https://github.com/unitreerobotics/brainco_hand_service) for setup instructions.
 
-After installation, you need to manually start the services for both dexterous hands. Example commands are shown below (note: the serial port names may vary depending on your system):
+## 3.4 ✋ Unitree Dex1_1 Service (Optional)
 
-```bash
-# Terminal 1.
-sudo ./brainco_hand --id 126 --serial /dev/ttyUSB1
-# Terminal 2.
-sudo ./brainco_hand --id 127 --serial /dev/ttyUSB2
-```
+Please refer to the [Repo README](https://github.com/unitreerobotics/dex1_1_service) for setup instructions.
 
-
-
-## 3.4 🚀 Launch
+## 3.5 🚀 Launch
 
 >  ![Warning](https://img.shields.io/badge/Warning-Important-red)
 >
-> 1. Everyone must keep a safe distance from the robot to prevent any potential danger!
-> 2. Please make sure to read the [Official Documentation](https://support.unitree.com/home/zh/Teleoperation) at least once before running this program.
-> 3. Without `--motion`, always make sure that the robot has entered [debug mode (L2+R2)](https://support.unitree.com/home/zh/H1_developer/Remote_control) to stop the motion control program, this will avoid potential command conflict problems.
-> 4. To use motion mode (with `--motion`), ensure the robot is in control mode (via [R3 remote](https://www.unitree.com/R3)).
-> 5. In motion mode:
+>  1. Everyone must keep a safe distance from the robot to prevent any potential danger!
+>  2. Please make sure to read the [Official Documentation](https://support.unitree.com/home/zh/Teleoperation) at least once before running this program.
+>  3. To use motion mode (with `--motion`), ensure the robot is in control mode (via [R3 remote](https://www.unitree.com/R3)).
+>  5. In motion mode:
 >    - Right controller **A** = Exit teleop
 >    - Both joysticks pressed = soft emergency stop (switch to damping mode)
 >    - Left joystick = drive directions; 
@@ -388,7 +464,7 @@ sudo ./brainco_hand --id 127 --serial /dev/ttyUSB2
 
 Same as simulation but follow the safety warnings above.
 
-## 3.5 🔚 Exit
+## 3.6 🔚 Exit
 
 > ![Warning](https://img.shields.io/badge/Warning-Important-red)
 >
@@ -407,116 +483,42 @@ Same as simulation but follow the safety warnings above.
 ```
 xr_teleoperate/
 │
-├── assets                    [Storage of robot URDF-related files]
-│
-├── hardware                  [3D‑printed hardware modules]
+├── assets                    [Stores robot URDF-related files]
 │
 ├── teleop
-│   ├── image_server
-│   │     ├── image_client.py      [Used to receive image data from the robot image server]
-│   │     ├── image_server.py      [Capture images from cameras and send via network (Running on robot's Development Computing Unit PC2)]
+│   ├── teleimager            [New image service library, supporting multiple features]
 │   │
 │   ├── televuer
 │   │      ├── src/televuer
-│   │         ├── television.py       [captures XR devices's head, wrist, hand/controller data]
+│   │         ├── television.py       [Captures head, wrist, and hand/controller data from XR devices using Vuer]
 │   │         ├── tv_wrapper.py       [Post-processing of captured data]
 │   │      ├── test
-│   │         ├── _test_television.py [test for television.py]
-│   │         ├── _test_tv_wrapper.py [test for tv_wrapper.py]
+│   │         ├── _test_television.py [Test program for television.py]
+│   │         ├── _test_tv_wrapper.py [Test program for tv_wrapper.py]
 │   │
 │   ├── robot_control
 │   │      ├── src/dex-retargeting [Dexterous hand retargeting algorithm library]
-│   │      ├── robot_arm_ik.py     [Inverse kinematics of the arm]
-│   │      ├── robot_arm.py        [Control dual arm joints and lock the others]
-│   │      ├── hand_retargeting.py [Dexterous hand retargeting algorithm library Wrapper]
-│   │      ├── robot_hand_inspire.py  [Control inspire hand joints]
-│   │      ├── robot_hand_unitree.py  [Control unitree hand joints]
+│   │      ├── robot_arm_ik.py     [Inverse kinematics for the arm]
+│   │      ├── robot_arm.py        [Controls dual-arm joints and locks other parts]
+│   │      ├── hand_retargeting.py [Wrapper for the dexterous hand retargeting library]
+│   │      ├── robot_hand_inspire.py  [Controls Inspire dexterous hand]
+│   │      ├── robot_hand_unitree.py  [Controls Unitree dexterous hand]
 │   │
 │   ├── utils
 │   │      ├── episode_writer.py          [Used to record data for imitation learning]
-│   │      ├── weighted_moving_filter.py  [For filtering joint data]
-│   │      ├── rerun_visualizer.py        [For visualizing data during recording]
+│   │      ├── weighted_moving_filter.py  [Filter for joint data]
+│   │      ├── rerun_visualizer.py        [Visualizes recorded data]
+│   │      ├── ipc.py                     [Handles inter-process communication with proxy programs]
+│   │      ├── motion_switcher.py         [Switches motion control states]
+│   │      ├── sim_state_topic.py         [For simulation deployment]
 │   │
-│   └── teleop_hand_and_arm.py    [Startup execution code for teleoperation]
+│   └── teleop_hand_and_arm.py    [Startup script for teleoperation]
+
 ```
 
 # 5. 🛠️ Hardware
 
-## 5.1 📋 Parts List
-
-|             Item             | Quantity |                           Link(s)                            |                           Remarks                            |
-| :--------------------------: | :------: | :----------------------------------------------------------: | :----------------------------------------------------------: |
-|      **humanoid robot**      |    1     |                   https://www.unitree.com                    |               With development computing unit                |
-|        **XR device**         |    1     | https://www.apple.com/apple-vision-pro/<br/>https://www.meta.com/quest/quest-3<br/>https://www.picoxr.com/products/pico4-ultra-enterprise |                                                              |
-|          **Router**          |    1     |                                                              |  Required for **default mode**; **wireless mode** not need.  |
-|         **User PC**          |    1     |                                                              | In **simulation mode**, please use the [officially recommended](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/installation/requirements.html) hardware resources for deployment. |
-|    **Head stereo camera**    |    1     | [For reference only] http://e.tb.cn/h.TaZxgkpfWkNCakg?tk=KKz03Kyu04u |                     For robot head view                      |
-|    **Head camera mount**     |    1     | https://github.com/unitreerobotics/xr_teleoperate/blob/g1/hardware/head_stereo_camera_mount.STEP |               For mounting head stereo camera                |
-| Intel RealSense D405 camera  |    2     |      https://www.intelrealsense.com/depth-camera-d405/       |                          For wrist                           |
-|       Wrist ring mount       |    2     | https://github.com/unitreerobotics/xr_teleoperate/blob/g1/hardware/wrist_ring_mount.STEP |                 Used with wrist camera mount                 |
-|    Left wrist D405 mount     |    1     | https://github.com/unitreerobotics/xr_teleoperate/blob/g1/hardware/left_wrist_D405_camera_mount.STEP |        For mounting left wrist RealSense D405  camera        |
-|    Right wrist D405 mount    |    1     | https://github.com/unitreerobotics/xr_teleoperate/blob/g1/hardware/right_wrist_D405_camera_mount.STEP |       For mounting right wrist RealSense D405  camera        |
-|        M3-1 hex nuts         |    4     |         [For reference only] https://a.co/d/1opqtOr          |                      For Wrist fastener                      |
-|         M3x12 screws         |    4     |       [For reference only] https://amzn.asia/d/aU9NHSf       |                      For Wrist fastener                      |
-|         M3x6 screws          |    4     |       [For reference only] https://amzn.asia/d/0nEz5dJ       |                      For Wrist fastener                      |
-|       **M4x14 screws**       |    2     |       [For reference only] https://amzn.asia/d/cfta55x       |                      For head fastener                       |
-| **M2x4 self‑tapping screws** |    4     |       [For reference only] https://amzn.asia/d/1msRa5B       |                      For head fastener                       |
-
-> Note: The bolded items are essential equipment for teleoperation tasks, while the other items are optional equipment for recording [datasets](https://huggingface.co/unitreerobotics).
-
-## 5.2 🔨 Mounting Diagrams
-
-<table>
-    <tr>
-        <th align="center">Item</th>
-        <th align="center" colspan="2">Simulation</th>
-        <th align="center" colspan="2">Real</th>
-    </tr>
-    <tr>
-        <td align="center">Head</td>
-        <td align="center">
-            <p align="center">
-                <img src="./img/head_camera_mount.png" alt="head" width="100%">
-                <figcaption>Head Mount</figcaption>
-            </p>
-        </td>
-        <td align="center">
-            <p align="center">
-                <img src="./img/head_camera_mount_install.png" alt="head" width="80%">
-                <figcaption>Side View of Assembly</figcaption>
-            </p>
-        </td>
-        <td align="center" colspan="2">
-            <p align="center">
-                <img src="./img/real_head.jpg" alt="head" width="20%">
-                <figcaption>Front View of Assembly</figcaption>
-            </p>
-        </td>
-    </tr>
-    <tr>
-        <td align="center">Wrist</td>
-        <td align="center" colspan="2">
-            <p align="center">
-                <img src="./img/wrist_and_ring_mount.png" alt="wrist" width="100%">
-                <figcaption>Wrist Ring and Camera Mount</figcaption>
-            </p>
-        </td>
-        <td align="center">
-            <p align="center">
-                <img src="./img/real_left_hand.jpg" alt="wrist" width="50%">
-                <figcaption>Left Hand Assembly</figcaption>
-            </p>
-        </td>
-        <td align="center">
-            <p align="center">
-                <img src="./img/real_right_hand.jpg" alt="wrist" width="50%">
-                <figcaption>Right Hand Assembly</figcaption>
-            </p>
-        </td>
-    </tr>
-</table>
-
-> Note: The wrist ring mount should align with the seam of the robot's wrist, as shown by the red circle in the image.
+please see [Device document](Device.md).
 
 
 
@@ -533,3 +535,4 @@ This code builds upon following open-source code-bases. Please visit the URLs to
 7. https://github.com/zeromq/pyzmq
 8. https://github.com/Dingry/BunnyVisionPro
 9. https://github.com/unitreerobotics/unitree_sdk2_python
+10. https://github.com/ARCLab-MIT/beavr-bot

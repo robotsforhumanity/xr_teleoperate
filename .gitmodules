@@ -4,3 +4,6 @@
 [submodule "teleop/robot_control/dex-retargeting"]
 	path = teleop/robot_control/dex-retargeting
 	url = https://github.com/silencht/dex-retargeting
+[submodule "teleop/teleimager"]
+	path = teleop/teleimager
+	url = https://github.com/silencht/teleimager.git
