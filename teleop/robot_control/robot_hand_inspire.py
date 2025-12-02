@@ -27,10 +27,16 @@ class Inspire_Controller_DFX:
         else:
             self.hand_retargeting = HandRetargeting(HandType.INSPIRE_HAND_Unit_Test)
 
-        if self.simulation_mode:
-            ChannelFactoryInitialize(1)
-        else:
-            ChannelFactoryInitialize(0)
+        # Initialize DDS domain - may already be initialized by robot_arm
+        # MUST specify network interface for inter-process communication!
+        try:
+            if self.simulation_mode:
+                ChannelFactoryInitialize(1, "enp39s0")  # same network interface for same-host communication
+            else:
+                ChannelFactoryInitialize(0)  # real robot uses default interface
+        except Exception as e:
+            # Already initialized - this is fine
+            pass
 
         # initialize handcmd publisher and handstate subscriber
         self.HandCmb_publisher = ChannelPublisher(kTopicInspireDFXCommand, MotorCmds_)
@@ -175,10 +181,16 @@ class Inspire_Controller_FTP:
         else:
             self.hand_retargeting = HandRetargeting(HandType.INSPIRE_HAND_Unit_Test)
 
-        if self.simulation_mode:
-            ChannelFactoryInitialize(1)
-        else:
-            ChannelFactoryInitialize(0)
+        # Initialize DDS domain - may already be initialized by robot_arm
+        # MUST specify network interface for inter-process communication!
+        try:
+            if self.simulation_mode:
+                ChannelFactoryInitialize(1, "enp39s0")  # same network interface for same-host communication
+            else:
+                ChannelFactoryInitialize(0)  # real robot uses default interface
+        except Exception as e:
+            # Already initialized - this is fine
+            pass
 
         # Initialize hand command publishers
         self.LeftHandCmd_publisher = ChannelPublisher(kTopicInspireFTPLeftCommand, inspire_dds.inspire_hand_ctrl)
@@ -248,6 +260,9 @@ class Inspire_Controller_FTP:
         """
         Send scaled angle commands [0-1000] to both hands.
         """
+        # Lazy import to ensure availability in subprocess
+        from inspire_sdkpy import inspire_hand_defaut
+
         # Left Hand Command
         left_cmd_msg = inspire_hand_defaut.get_inspire_hand_ctrl()
         left_cmd_msg.angle_set = left_angle_cmd_scaled
