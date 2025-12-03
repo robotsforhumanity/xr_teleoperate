@@ -24,13 +24,35 @@ from teleop.utils.ipc import IPC_Server
 from teleop.utils.motion_switcher import MotionSwitcher, LocoClientWrapper
 from sshkeyboard import listen_keyboard, stop_listening
 
+try:
+    import omni.replicator.core as rep
+    import omni.timeline
+    from teleop.utils.cosmos_writer import CosmosWriter
+    HAS_OMNI = True
+except ImportError:
+    HAS_OMNI = False
+
 # for simulation
 from unitree_sdk2py.core.channel import ChannelPublisher
 from unitree_sdk2py.idl.std_msgs.msg.dds_ import String_
+
+# Shared memory for recording commands (bypasses DDS)
+recording_shm = None
+
 def publish_reset_category(category: int, publisher): # Scene Reset signal
     msg = String_(data=str(category))
     publisher.Write(msg)
     logger_mp.info(f"published reset category: {category}")
+    
+    # ALSO write to shared memory as fallback
+    global recording_shm
+    if recording_shm is not None:
+        try:
+            cmd = f"{category}|{time.time():.6f}"
+            recording_shm.write_command(cmd)
+            logger_mp.info(f"📤 [SHM WRITE] {cmd}")
+        except Exception as exc:
+            logger_mp.warning(f"Failed to write recording command to shared memory: {exc}")
 
 # state transition
 START          = False  # Enable to start robot following VR user motion
@@ -133,10 +155,47 @@ if __name__ == '__main__':
         if args.motion:
             if args.input_mode == "controller":
                 loco_wrapper = LocoClientWrapper()
-        else:
+        elif not args.sim:
             motion_switcher = MotionSwitcher()
             status, result = motion_switcher.Enter_Debug_Mode()
             logger_mp.info(f"Enter debug mode: {'Success' if status == 0 else 'Failed'}")
+
+        # simulation mode - Initialize DDS FIRST before any controllers
+        reset_pose_publisher = None
+        sim_state_subscriber = None
+        if args.sim:
+            # Initialize shared memory for recording commands (bypasses DDS issues)
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../unitree_sim_isaaclab'))
+            from tools.recording_shm import RecordingCommandShm
+            # Note: recording_shm is already declared at module level (line ~40)
+            # so we don't need 'global' here - we're already in module scope
+            recording_shm = RecordingCommandShm(is_writer=True)
+            logger_mp.info("✅ Recording command shared memory initialized")
+            # Immediately publish a baseline STOP so the simulator sees a clean initial state
+            baseline_cmd = f"STOP_REC|{time.time():.6f}"
+            recording_shm.write_command(baseline_cmd)
+            logger_mp.info(f"📤 [SHM WRITE] {baseline_cmd} (baseline)")
+            
+            # CRITICAL: Initialize DDS domain BEFORE creating any publishers/subscribers/controllers
+            # MUST specify network interface for inter-process communication!
+            from unitree_sdk2py.core.channel import ChannelFactoryInitialize
+            try:
+                # Use primary network interface for DDS communication
+                # Both processes on same host will communicate through this interface
+                ChannelFactoryInitialize(1, "enp39s0")
+                logger_mp.info("✅ DDS domain 1 initialized for simulation (interface: enp39s0)")
+            except Exception as e:
+                logger_mp.warning(f"ChannelFactoryInitialize note: {e}")
+            
+            # Now create the reset_pose_publisher IMMEDIATELY after ChannelFactoryInitialize
+            # This ensures it's in the same DDS context as everything else
+            reset_pose_publisher = ChannelPublisher("rt/reset_pose/cmd", String_)
+            reset_pose_publisher.Init()
+            logger_mp.info("✅ reset_pose_publisher created")
+            
+            from teleop.utils.sim_state_topic import start_sim_state_subscribe
+            sim_state_subscriber = start_sim_state_subscribe()
+            logger_mp.info("✅ sim_state_subscriber created")
 
         # arm
         if args.arm == "G1_29":
@@ -213,12 +272,13 @@ if __name__ == '__main__':
                 except psutil.AccessDenied:
                     pass
 
-        # simulation mode
-        if args.sim:
-            reset_pose_publisher = ChannelPublisher("rt/reset_pose/cmd", String_)
-            reset_pose_publisher.Init()
-            from teleop.utils.sim_state_topic import start_sim_state_subscribe
-            sim_state_subscriber = start_sim_state_subscribe()
+        # Send initial STOP_REC after all DDS setup is complete
+        if args.sim and reset_pose_publisher:
+            logger_mp.info("📤 Sending initial STOP_REC to simulator...")
+            time.sleep(2.0)  # Give time for DDS discovery between both processes
+            publish_reset_category("STOP_REC", reset_pose_publisher)
+            logger_mp.info("✅ Initial STOP_REC sent")
+
 
         # record + headless / non-headless mode
         if args.record:
@@ -228,6 +288,7 @@ if __name__ == '__main__':
                                      task_steps = args.task_steps,
                                      frequency = args.frequency, 
                                      rerun_log = not args.headless)
+
 
         logger_mp.info("Please enter the start signal (enter 'r' to start the subsequent program)")
         READY = True                  # now ready to (1) enter START state
@@ -261,13 +322,18 @@ if __name__ == '__main__':
                 if not RECORD_RUNNING:
                     if recorder.create_episode():
                         RECORD_RUNNING = True
+                        # Send start signal to Sim if applicable
+                        if args.sim:
+                            publish_reset_category("START_REC", reset_pose_publisher)
                     else:
                         logger_mp.error("Failed to create episode. Recording not started.")
                 else:
                     RECORD_RUNNING = False
                     recorder.save_episode()
                     if args.sim:
-                        publish_reset_category(1, reset_pose_publisher)
+                        publish_reset_category("STOP_REC", reset_pose_publisher)
+                        # Note: Reset scene manually if needed with separate key
+                        # Removed automatic reset to prevent DDS interference
 
             # get xr's tele data
             tele_data = tv_wrapper.get_tele_data()
@@ -455,6 +521,7 @@ if __name__ == '__main__':
                     else:
                         recorder.add_item(colors=colors, depths=depths, states=states, actions=actions)
 
+
             current_time = time.time()
             time_elapsed = current_time - start_time
             sleep_time = max(0, (1 / args.frequency) - time_elapsed)
@@ -489,7 +556,7 @@ if __name__ == '__main__':
             logger_mp.error(f"Failed to close televuer wrapper: {e}")
 
         try:
-            if not args.motion:
+            if not args.motion and not args.sim:
                 status, result = motion_switcher.Exit_Debug_Mode()
                 logger_mp.info(f"Exit debug mode: {'Success' if status == 3104 else 'Failed'}")
         except Exception as e:
@@ -506,5 +573,14 @@ if __name__ == '__main__':
                 recorder.close()
         except Exception as e:
             logger_mp.error(f"Failed to close recorder: {e}")
+        
+        # Close shared memory
+        try:
+            if recording_shm is not None:
+                recording_shm.close()
+                logger_mp.info("Recording shared memory closed")
+        except Exception as e:
+            logger_mp.error(f"Failed to close recording_shm: {e}")
+        
         logger_mp.info("Finally, exiting program.")
         exit(0)
