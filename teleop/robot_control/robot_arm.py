@@ -33,6 +33,7 @@ class MotorState:
 class G1_29_LowState:
     def __init__(self):
         self.motor_state = [MotorState() for _ in range(G1_29_Num_Motors)]
+        self.mode_machine = 0
 
 class G1_23_LowState:
     def __init__(self):
@@ -65,7 +66,7 @@ class DataBuffer:
             self.data = data
 
 class G1_29_ArmController:
-    def __init__(self, motion_mode = False, simulation_mode = False):
+    def __init__(self, motion_mode=False, simulation_mode=False, hold_current=False):
         logger_mp.info("Initialize G1_29_ArmController...")
         self.q_target = np.zeros(14)
         self.tauff_target = np.zeros(14)
@@ -85,6 +86,7 @@ class G1_29_ArmController:
         self._speed_gradual_max = False
         self._gradual_start_time = None
         self._gradual_time = None
+        self._running = True
 
         if self.motion_mode:
             print("Motion Mode")
@@ -101,7 +103,16 @@ class G1_29_ArmController:
         self.subscribe_thread.daemon = True
         self.subscribe_thread.start()
 
+        t0 = time.time()
+        dds_timeout = 10.0
         while not self.lowstate_buffer.GetData():
+            if time.time() - t0 > dds_timeout:
+                raise TimeoutError(
+                    "No llegó rt/lowstate en %.0fs. Con wlan0 y eth0 UP, "
+                    "CycloneDDS suele descubrir por WiFi y no ve el MCU. "
+                    "Usá CYCLONEDDS_URI (eth0 + AllowMulticast=spdp) y no dejes "
+                    "que el SDK autoelige la interfaz." % dds_timeout
+                )
             time.sleep(0.1)
             logger_mp.warning("[G1_29_ArmController] Waiting to subscribe dds...")
         logger_mp.info("[G1_29_ArmController] Subscribe dds ok.")
@@ -113,6 +124,8 @@ class G1_29_ArmController:
         self.msg.mode_machine = self.get_mode_machine()
 
         self.all_motor_q = self.get_current_motor_q()
+        if hold_current:
+            self.q_target = self.get_current_dual_arm_q()
         logger_mp.debug(f"Current all body motor state q:\n{self.all_motor_q} \n")
         logger_mp.debug(f"Current two arms motor state q:\n{self.get_current_dual_arm_q()}\n")
         logger_mp.info("Lock all joints except two arms...")
@@ -146,15 +159,22 @@ class G1_29_ArmController:
         logger_mp.info("Initialize G1_29_ArmController OK!")
 
     def _subscribe_motor_state(self):
+        # Read() without timeout can block in CycloneDDS while holding the GIL,
+        # which makes Ctrl+C impossible. Always use a short timeout.
         while True:
-            msg = self.lowstate_subscriber.Read()
+            msg = self.lowstate_subscriber.Read(0.05)
             if msg is not None:
-                lowstate = G1_29_LowState()
-                for id in range(G1_29_Num_Motors):
-                    lowstate.motor_state[id].q  = msg.motor_state[id].q
-                    lowstate.motor_state[id].dq = msg.motor_state[id].dq
-                self.lowstate_buffer.SetData(lowstate)
-            time.sleep(0.002)
+                try:
+                    lowstate = G1_29_LowState()
+                    for id in range(G1_29_Num_Motors):
+                        lowstate.motor_state[id].q  = msg.motor_state[id].q
+                        lowstate.motor_state[id].dq = msg.motor_state[id].dq
+                    lowstate.mode_machine = getattr(msg, "mode_machine", 0)
+                    self.lowstate_buffer.SetData(lowstate)
+                except Exception:
+                    time.sleep(0.002)
+            else:
+                time.sleep(0.002)
 
     def clip_arm_q_target(self, target_q, velocity_limit):
         current_q = self.get_current_dual_arm_q()
@@ -167,7 +187,7 @@ class G1_29_ArmController:
         if self.motion_mode:
             self.msg.motor_cmd[G1_29_JointIndex.kNotUsedJoint0].q = 1.0;
 
-        while True:
+        while self._running:
             start_time = time.time()
 
             with self.ctrl_lock:
@@ -198,6 +218,10 @@ class G1_29_ArmController:
             # logger_mp.debug(f"arm_velocity_limit:{self.arm_velocity_limit}")
             # logger_mp.debug(f"sleep_time:{sleep_time}")
 
+    def stop_publishing(self):
+        '''Stop arm_sdk publishes without fading weight. Another controller can take over.'''
+        self._running = False
+
     def ctrl_dual_arm(self, q_target, tauff_target):
         '''Set control target values q & tau of the left and right arm motors.'''
         with self.ctrl_lock:
@@ -206,7 +230,14 @@ class G1_29_ArmController:
 
     def get_mode_machine(self):
         '''Return current dds mode machine.'''
-        return self.lowstate_subscriber.Read().mode_machine
+        data = self.lowstate_buffer.GetData()
+        if data is not None and getattr(data, "mode_machine", None) is not None:
+            return data.mode_machine
+        for _ in range(20):
+            msg = self.lowstate_subscriber.Read(0.1)
+            if msg is not None:
+                return msg.mode_machine
+        return 0
     
     def get_current_motor_q(self):
         '''Return current state q of all body motors.'''
